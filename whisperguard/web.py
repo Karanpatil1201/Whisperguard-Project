@@ -148,7 +148,7 @@ def analyze():
 
     rule_ratio, rule_flag = detect_ultrasonic(waveform, sr)
     log_mel = waveform_to_log_mel(waveform, sr=sr)
-    ml_scores = classifier.predict(log_mel)
+    ml_scores = classifier.predict(log_mel, waveform=waveform, sr=sr)
     sensitivity = float(request.form.get("sensitivity", 0.5))
     level, score = fuse_scores(rule_ratio, ml_scores, sensitivity=sensitivity, whitelist=False)
 

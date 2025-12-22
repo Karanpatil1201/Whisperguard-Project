@@ -1,0 +1,18 @@
+body { background: #0b1220; color: #e6eef8; font-family: Inter, system-ui, Arial, sans-serif; }
+.navbar-brand { color: #6be4ff !important; font-weight: 700; }
+.app-container { padding: 24px; }
+.panel { background: linear-gradient(180deg,#071024 0%, #0f2130 100%); border:1px solid rgba(255,255,255,0.04); padding:16px; border-radius:8px; }
+.card-list { max-height: 60vh; overflow: auto; }
+.result-safe { color: #9fe6a8; }
+.result-warning { color: #ffdd57; }
+.result-danger { color: #ff6b6b; }
+.small-muted { color: #8893a7; font-size: 0.9rem; }
+.evidence-link { color: #9fe6ff; text-decoration: none; }
+.evidence-link:hover { text-decoration: underline; }
+.vendor-tag { background: rgba(255,255,255,0.03); padding: 4px 8px; border-radius: 12px; margin-right:6px; display:inline-block; }
+.mt-8 { margin-top: 8px; }
+
+/* responsive tweaks */
+@media (max-width: 768px) {
+  .desktop-hide { display: none; }
+}

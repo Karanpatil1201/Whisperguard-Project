@@ -51,7 +51,7 @@ def main():
 
             rule_ratio, rule_flag = detect_ultrasonic(waveform, ac.samplerate)
             log_mel = waveform_to_log_mel(waveform, sr=ac.samplerate)
-            ml_scores = classifier.predict(log_mel)
+            ml_scores = classifier.predict(log_mel, waveform=waveform, sr=ac.samplerate)
 
             level, score = fuse_scores(rule_ratio, ml_scores, sensitivity=args.sensitivity, whitelist=False)
 

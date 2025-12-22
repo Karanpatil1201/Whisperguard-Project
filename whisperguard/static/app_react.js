@@ -1,342 +1,194 @@
-const { useState, useRef } = React;
+const { useState, useRef, useEffect } = React;
 
-function App() {
+function VendorTag({name, score}){
+  const pct = Math.round((score||0)*100);
+  const cls = score > 0.7 ? 'result-danger' : (score > 0.4 ? 'result-warning' : 'result-safe');
+  return (<span className={`vendor-tag ${cls}`} title={`${pct}%`}>{name} <small className="small-muted">{pct}%</small></span>);
+}
+
+function AppHeader(){
+  return (
+    <nav className="navbar navbar-dark bg-dark">
+      <div className="container-fluid">
+        <a className="navbar-brand" href="#">WhisperGuard</a>
+        <div className="d-flex">
+          <a className="nav-link text-light" href="#">Scan</a>
+          <a className="nav-link text-light" href="#">Evidence</a>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+function App(){
   const [status, setStatus] = useState('idle');
   const [evidenceList, setEvidenceList] = useState([]);
-  const [lastBlob, setLastBlob] = useState(null);
   const [result, setResult] = useState(null);
   const [sensitivity, setSensitivity] = useState(0.5);
   const [forceSave, setForceSave] = useState(false);
   const fileRef = useRef(null);
   const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
+  const continuousRef = useRef({ running: false, stream: null });
+  const [continuousRunning, setContinuousRunning] = useState(false);
 
-  // encode Float32Array samples to 16-bit PCM WAV Blob
-  function encodeWAV(samples, sampleRate) {
+  async function fetchEvidence(){
+    try{ const r = await axios.get('/evidence/list'); setEvidenceList(r.data.events || []); }catch(e){ console.warn(e); }
+  }
+
+  useEffect(()=>{ fetchEvidence(); const id = setInterval(fetchEvidence, 10000); return ()=>clearInterval(id); }, []);
+
+  // minimal encoder from captured Float32 to WAV (kept simple)
+  function encodeWAV(samples, sampleRate){
     const buffer = new ArrayBuffer(44 + samples.length * 2);
     const view = new DataView(buffer);
-
-    function writeString(view, offset, string) {
-      for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
-      }
-    }
-
-    // RIFF identifier
-    writeString(view, 0, 'RIFF');
-    // file length minus RIFF and size
-    view.setUint32(4, 36 + samples.length * 2, true);
-    // WAVE
-    writeString(view, 8, 'WAVE');
-    // fmt chunk
-    writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true); // chunk length
-    view.setUint16(20, 1, true); // PCM
-    view.setUint16(22, 1, true); // channels
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * 2, true); // byte rate (sampleRate * blockAlign)
-    view.setUint16(32, 2, true); // block align
-    view.setUint16(34, 16, true); // bits per sample
-    // data chunk
-    writeString(view, 36, 'data');
-    view.setUint32(40, samples.length * 2, true);
-
-    // write PCM samples
-    let offset = 44;
-    for (let i = 0; i < samples.length; i++, offset += 2) {
-      let s = Math.max(-1, Math.min(1, samples[i]));
-      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-    }
-
-    return new Blob([view], { type: 'audio/wav' });
+    function writeString(v, o, s){ for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); }
+    writeString(view,0,'RIFF'); view.setUint32(4,36 + samples.length*2, true); writeString(view,8,'WAVE');
+    writeString(view,12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+    view.setUint32(24,sampleRate,true); view.setUint32(28,sampleRate*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
+    writeString(view,36,'data'); view.setUint32(40,samples.length*2,true);
+    let off=44; for(let i=0;i<samples.length;i++,off+=2){ let s=Math.max(-1,Math.min(1,samples[i])); view.setInt16(off, s<0?s*0x8000:s*0x7FFF, true); }
+    return new Blob([view], {type:'audio/wav'});
   }
 
-  async function analyzeFile(file) {
-    setStatus('uploading');
-    const fd = new FormData();
-    fd.append('audio', file, file.name || 'upload.wav');
-    fd.append('sensitivity', sensitivity);
-    if (forceSave) fd.append('force_save', '1');
-    try {
-      // let axios set the Content-Type boundary automatically
-      console.debug('Uploading', file);
-      const r = await axios.post('/analyze', fd, {
-        onUploadProgress: (ev) => {
-          // simple progress indicator
-          if (ev.lengthComputable) {
-            const pct = Math.round((ev.loaded / ev.total) * 100);
-            setStatus(`uploading ${pct}%`);
-          }
-        }
-      });
-      console.debug('Server response', r.data);
-      setResult(r.data);
-      // refresh evidence list immediately after a successful analyze
-      try { fetchEvidence(); } catch(_){}
-      // if caller passed a Blob/File, draw it
-      try { if (file instanceof Blob) { setLastBlob(file); } } catch(_){}
-      setStatus('done');
-    } catch (e) {
-      console.error('Upload error', e);
-      setResult({ error: e.response ? e.response.data : e.message });
-      setStatus('error');
-    }
-  }
-
-  async function fetchEvidence() {
-    try {
-      const r = await axios.get('/evidence/list');
-      setEvidenceList(r.data.events || []);
-    } catch (e) {
-      console.warn('Could not fetch evidence list', e);
-    }
-  }
-
-  // auto-refresh evidence list every 10s
-  React.useEffect(()=>{
-    fetchEvidence();
-    const id = setInterval(fetchEvidence, 10000);
-    return ()=>clearInterval(id);
-  }, []);
-
-  function onUploadClick() {
-    const f = fileRef.current.files[0];
-    if (!f) return alert('Choose a file first');
-    analyzeFile(f);
-  }
-
-  // RECORDING USING AudioContext -> PCM -> WAV to avoid server-side ffmpeg
-  const audioCtxRef = useRef(null);
-  const sourceRef = useRef(null);
-  const processorRef = useRef(null);
-
-  async function startRecording() {
-    setStatus('recording');
-    try {
+  // Start continuous capture using MediaRecorder; decode chunks to WAV before sending
+  async function startContinuous(){
+    if (continuousRunning) return;
+    try{
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      sourceRef.current = audioCtxRef.current.createMediaStreamSource(stream);
-      const bufferLen = 4096;
-      processorRef.current = audioCtxRef.current.createScriptProcessor(bufferLen, 1, 1);
-      const samples = [];
-      processorRef.current.onaudioprocess = (e) => {
-        const ch = e.inputBuffer.getChannelData(0);
-        samples.push(new Float32Array(ch));
+      const opts = {};
+      let mime = '';
+      try{ mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : (MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : ''); }catch(_){ mime = ''; }
+      if (mime) opts.mimeType = mime;
+      const mr = new MediaRecorder(stream, opts);
+      mr.ondataavailable = async (e) => {
+        if (!e.data || e.data.size === 0) return;
+        try{
+          // decode to PCM then re-encode to WAV so server receives a WAV
+          const ab = await e.data.arrayBuffer();
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const audioBuf = await ctx.decodeAudioData(ab.slice(0));
+          const data = audioBuf.numberOfChannels > 1 ? audioBuf.getChannelData(0) : audioBuf.getChannelData(0);
+          const wav = encodeWAV(data, audioBuf.sampleRate);
+          await analyzeFile(new File([wav],'chunk.wav',{type:'audio/wav'}));
+          try{ ctx.close(); }catch(_){ }
+        }catch(err){ console.warn('continuous chunk decode/send failed', err); }
       };
-      sourceRef.current.connect(processorRef.current);
-      try { processorRef.current.connect(audioCtxRef.current.destination); } catch(_) {}
-
-      mediaRecorderRef.current = { stream, samples };
-    } catch (e) {
-      setStatus('error');
-      setResult({ error: String(e) });
-    }
+      mr.onerror = (ev)=> console.warn('MediaRecorder error', ev);
+      // start with 1s timeslice to match server chunking
+      mr.start(1000);
+      mediaRecorderRef.current = mr;
+      continuousRef.current = { running: true, stream };
+      setContinuousRunning(true);
+      setStatus('continuous');
+    }catch(e){ console.warn('startContinuous failed', e); setStatus('error'); }
   }
 
-  async function stopRecording() {
-    if (!mediaRecorderRef.current) return;
-    setStatus('stopping');
-    try {
-      const { stream, samples } = mediaRecorderRef.current;
-      // concat Float32 chunks
-      let totalLen = samples.reduce((s, a) => s + a.length, 0);
-      const out = new Float32Array(totalLen);
-      let offset = 0;
-      for (const s of samples) { out.set(s, offset); offset += s.length; }
-      const blob = encodeWAV(out, audioCtxRef.current.sampleRate);
-      const file = new File([blob], 'recording.wav', { type: 'audio/wav' });
-      await analyzeFile(file);
-    } catch (e) {
-      setResult({ error: String(e) });
-      setStatus('error');
-    } finally {
-      try { processorRef.current.disconnect(); } catch(_){ }
-      try { sourceRef.current.disconnect(); } catch(_){ }
-      try { audioCtxRef.current.close(); } catch(_){ }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.stream) {
-        mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+  function stopContinuous(){
+    try{
+      const mr = mediaRecorderRef.current;
+      if (mr && mr.state !== 'inactive') mr.stop();
+      if (continuousRef.current && continuousRef.current.stream){
+        continuousRef.current.stream.getTracks().forEach(t=>t.stop());
       }
-      mediaRecorderRef.current = null;
-      try { audioCtxRef.current = null; } catch(_){}
-      try { sourceRef.current = null; } catch(_){}
-      try { processorRef.current = null; } catch(_){}
-    }
-  }
-
-  // Continuous monitoring: capture 1s chunks and send repeatedly
-  let continuousState = useRef({ running: false, intervalId: null, accum: [] });
-
-  async function startContinuous() {
-    setStatus('continuous');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // reuse audio context if exists
-      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      sourceRef.current = audioCtxRef.current.createMediaStreamSource(stream);
-      const bufferLen = 4096;
-      processorRef.current = audioCtxRef.current.createScriptProcessor(bufferLen, 1, 1);
-      // accumulates Float32Array chunks continuously
-      const accum = [];
-      processorRef.current.onaudioprocess = (e) => {
-        const ch = e.inputBuffer.getChannelData(0);
-        // copy the buffer to avoid referencing the underlying memory
-        accum.push(new Float32Array(ch));
-      };
-      sourceRef.current.connect(processorRef.current);
-      // Do NOT connect processor to destination to avoid playback feedback on most browsers
-      try { processorRef.current.connect(audioCtxRef.current.destination); } catch(_) {}
-
-      // periodic sender: every 1s, assemble exactly sampleRate samples and send
-      const sendInterval = setInterval(()=>{
-        try {
-          const sampleRate = (audioCtxRef.current && audioCtxRef.current.sampleRate) || 44100;
-          const needed = sampleRate;
-          const total = accum.reduce((s,a)=>s+a.length,0);
-          if (total < needed) return; // not enough yet
-          const out = new Float32Array(needed);
-          let off = 0;
-          while (off < needed && accum.length) {
-            const chunk = accum.shift();
-            const take = Math.min(chunk.length, needed - off);
-            out.set(chunk.subarray(0, take), off);
-            if (take < chunk.length) {
-              accum.unshift(chunk.subarray(take));
-            }
-            off += take;
-          }
-          const blob = encodeWAV(out, audioCtxRef.current.sampleRate);
-          setLastBlob(blob);
-          // draw immediately for live feedback
-          try { drawWaveform(blob); } catch(_){}
-          analyzeFile(new File([blob], 'chunk.wav', { type: 'audio/wav' }));
-        } catch(e) {
-          console.error('continuous send error', e);
-        }
-      }, 1000);
-
-      continuousState.current = { running: true, stream, accum, intervalId: sendInterval };
-    } catch (e) {
-      setStatus('error');
-      setResult({ error: String(e) });
-    }
-  }
-
-  function stopContinuous() {
-    try {
-      if (continuousState.current && continuousState.current.intervalId) {
-        clearInterval(continuousState.current.intervalId);
-      }
-      if (processorRef.current) try{ processorRef.current.disconnect(); }catch(_){ }
-      if (sourceRef.current) try{ sourceRef.current.disconnect(); }catch(_){ }
-      if (audioCtxRef.current) try{ audioCtxRef.current.close(); audioCtxRef.current = null; }catch(_){ }
-      if (continuousState.current && continuousState.current.stream) {
-        continuousState.current.stream.getTracks().forEach(t=>t.stop());
-      }
-    } catch(_){ }
-    continuousState.current = { running: false, accum: [] };
+    }catch(_){ }
+    mediaRecorderRef.current = null;
+    continuousRef.current = { running:false, stream:null };
+    setContinuousRunning(false);
     setStatus('idle');
   }
 
-  // draw waveform of last sent blob
-  const canvasRef = useRef(null);
-  async function drawWaveform(blob) {
-    if (!blob) return;
-    try {
-      const ab = await blob.arrayBuffer();
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const audioBuffer = await ctx.decodeAudioData(ab.slice(0));
-      const data = audioBuffer.getChannelData(0);
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const w = canvas.width = canvas.clientWidth;
-      const h = canvas.height = 100;
-      const c = canvas.getContext('2d');
-      c.fillStyle = '#071224'; c.fillRect(0,0,w,h);
-      c.strokeStyle = '#6be4ff'; c.lineWidth = 1;
-      c.beginPath();
-      const step = Math.floor(data.length / w) || 1;
-      for (let i=0;i<w;i++){
-        const v = data[i*step];
-        const y = (1 - v) * (h/2);
-        if (i===0) c.moveTo(i,y); else c.lineTo(i,y);
-      }
-      c.stroke();
-      try{ ctx.close(); }catch(_){}
-    } catch(e) { console.warn('draw waveform failed', e); }
+  async function analyzeFile(file){
+    setStatus('uploading');
+    const fd = new FormData(); fd.append('audio', file, file.name||'upload.wav'); fd.append('sensitivity', sensitivity); if (forceSave) fd.append('force_save','1');
+    try{
+      const r = await axios.post('/analyze', fd, { headers: {'Accept':'application/json'} });
+      setResult(r.data);
+      setStatus('done');
+      fetchEvidence();
+    }catch(e){ setStatus('error'); setResult({error: e.message || String(e)}); }
   }
 
-  // auto-draw when lastBlob changes
-  React.useEffect(()=>{
-    if (lastBlob) drawWaveform(lastBlob);
-  }, [lastBlob]);
+  function onUpload(){ const f = fileRef.current.files[0]; if(!f) return alert('Select a file'); analyzeFile(f); }
+
+  // simple UI helpers to synthesize vendor columns from ml_scores
+  function vendorListFromResult(res){
+    const vendors = ['Vendor A','Vendor B','Vendor C','Ultrasonic Detector'];
+    const scores = (res && res.ml_scores) ? Object.values(res.ml_scores) : [0,0,0, (res&&res.rule_ratio)||0];
+    return vendors.map((v,i)=>({name:v, score: scores[i] || 0}));
+  }
 
   return (
-    <div style={{maxWidth:900, margin:'0 auto'}}>
-      <h1>WhisperGuard — React Demo</h1>
-      <div style={{display:'flex', gap:20}}>
-        <div style={{flex:1}}>
-          <h3>Upload audio</h3>
-          <input ref={fileRef} type="file" accept="audio/*" />
-          <div style={{marginTop:8}}>
-            <label>Sensitivity: {sensitivity}</label>
-            <input type="range" min="0" max="1" step="0.01" value={sensitivity}
-              onChange={(e)=>setSensitivity(parseFloat(e.target.value))} />
-            <div style={{marginTop:6}}>
-              <label style={{marginRight:8}}>Force save evidence:</label>
-              <input type="checkbox" checked={forceSave} onChange={(e)=>setForceSave(e.target.checked)} />
+    <div>
+      <AppHeader />
+      <div className="container app-container">
+        <div className="row">
+          <div className="col-lg-4">
+            <div className="panel">
+              <h5>File Scan</h5>
+              <input ref={fileRef} type="file" accept="audio/*" className="form-control mt-2" />
+              <div className="mt-2 d-flex align-items-center">
+                <label className="small-muted me-2">Sensitivity</label>
+                <input type="range" min="0" max="1" step="0.01" value={sensitivity} onChange={(e)=>setSensitivity(parseFloat(e.target.value))} />
+              </div>
+              <div className="form-check mt-2">
+                <input className="form-check-input" type="checkbox" id="forceSave" checked={forceSave} onChange={(e)=>setForceSave(e.target.checked)} />
+                <label className="form-check-label small-muted" htmlFor="forceSave">Force save evidence</label>
+              </div>
+              <div className="mt-3">
+                <button className="btn btn-primary me-2" onClick={onUpload}><i className="fa fa-upload"></i> Analyze</button>
+                <button className="btn btn-outline-secondary me-2" onClick={()=>{ setResult(null); setStatus('idle'); }}>Reset</button>
+                {!continuousRunning ? (
+                  <button className="btn btn-success" onClick={startContinuous}><i className="fa fa-play me-1"></i> Start Continuous</button>
+                ) : (
+                  <button className="btn btn-danger" onClick={stopContinuous}><i className="fa fa-stop me-1"></i> Stop Continuous</button>
+                )}
+              </div>
+              <hr />
+              <h6>Saved Evidence</h6>
+              <div className="card-list mt-2">
+                {evidenceList.length===0 && <div className="small-muted">No evidence saved.</div>}
+                {evidenceList.map(ev=> (
+                  <div className="mb-2" key={ev.name}>
+                    <div className="fw-bold">{ev.name}</div>
+                    <div className="small-muted">{ev.metadata ? ev.metadata.level : ''}</div>
+                    <div className="mt-1">
+                      {ev.files.map(f=> (<a className="evidence-link d-block" key={f} href={`/static/evidence/${ev.name}/${f}`} target="_blank" rel="noreferrer">{f}</a>))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-          <div style={{marginTop:8}}>
-            <button onClick={onUploadClick}>Analyze Upload</button>
-          </div>
-
-          <h3 style={{marginTop:20}}>Record (browser)</h3>
-              <div style={{display:'flex', gap:8}}>
-                <button onClick={startRecording}>Start Recording</button>
-                <button onClick={stopRecording}>Stop & Send</button>
+          <div className="col-lg-8">
+            <div className="panel">
+              <div className="d-flex justify-content-between align-items-center">
+                <h5>Scan Result</h5>
+                <div className="small-muted">Status: {status}</div>
               </div>
-              <h4 style={{marginTop:18}}>Continuous monitoring</h4>
-              <div style={{display:'flex', gap:8}}>
-                <button onClick={startContinuous}>Start Continuous</button>
-                <button onClick={stopContinuous}>Stop Continuous</button>
-              </div>
-              <div style={{marginTop:8}} className="muted">Continuous mode sends 1s WAV chunks to the server while the mic is open.</div>
-        </div>
-          <div style={{flex:1}}>
-          <h3>Saved Evidence</h3>
-          <div style={{marginBottom:8}}>
-            <button onClick={fetchEvidence}>Refresh Evidence List</button>
-          </div>
-          <div style={{maxHeight:220, overflow:'auto', background:'#071224', padding:8, borderRadius:6}}>
-            {evidenceList.length === 0 && <div className="muted">No evidence saved yet.</div>}
-            {evidenceList.map(ev=> (
-              <div key={ev.name} style={{padding:6, borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                <div style={{fontWeight:600}}>{ev.name}</div>
-                <div className="muted">{ev.metadata ? (ev.metadata.level || '') : ''}</div>
-                <div style={{marginTop:6}}>
-                  {ev.files.map(f=> (
-                    <div key={f}><a target="_blank" rel="noreferrer" href={`/static/evidence/${ev.name}/${f}`}>{f}</a></div>
-                  ))}
+              {!result && <div className="small-muted mt-3">Run a scan to see interactive vendor detections and evidence.</div>}
+              {result && (
+                <div className="mt-3">
+                  <div className="d-flex align-items-center mb-2">
+                    <h6 className="me-3">Overall: <span className={result.level === 'THREAT' ? 'result-danger' : (result.level === 'SUSPICIOUS' ? 'result-warning' : 'result-safe')}>{result.level}</span></h6>
+                    <div className="small-muted">Rule ratio: {result.rule_ratio}</div>
+                  </div>
+                  <div className="mb-3">
+                    {vendorListFromResult(result).map(v=> <VendorTag key={v.name} name={v.name} score={v.score} />)}
+                  </div>
+                  <div className="mb-2"><strong>Details</strong></div>
+                  <pre style={{whiteSpace:'pre-wrap', background:'#041021', padding:12, borderRadius:6, color:'#cfeefe'}}>{JSON.stringify(result, null, 2)}</pre>
+                  {result.evidence && (
+                    <div className="mt-3">
+                      <h6>Evidence Files</h6>
+                      <a className="evidence-link d-block" href={`/static/${result.evidence.audio}`} target="_blank" rel="noreferrer">Download audio</a>
+                      <a className="evidence-link d-block" href={`/static/${result.evidence.spectrogram}`} target="_blank" rel="noreferrer">View spectrogram</a>
+                      <a className="evidence-link d-block" href={`/static/${result.evidence.metadata}`} target="_blank" rel="noreferrer">View metadata</a>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
-          </div>
-          <h3>Status</h3>
-          <div style={{padding:10, background:'#f6f6f6'}}>{status}</div>
-          <h3 style={{marginTop:20}}>Result</h3>
-          <pre style={{background:'#fff', border:'1px solid #ddd', padding:10, minHeight:200}}>{result ? JSON.stringify(result, null, 2) : 'No result yet.'}</pre>
-          <div style={{marginTop:12}}>
-            <h4>Last Sent Waveform</h4>
-            <canvas ref={canvasRef} style={{width:'100%', border:'1px solid #ccc', borderRadius:6}} />
-          </div>
-          {result && result.evidence && (
-            <div style={{marginTop:12}}>
-              <h4>Evidence</h4>
-              <div><a target="_blank" rel="noreferrer" href={`/static/${result.evidence.audio}`}>Download audio.wav</a></div>
-              <div><a target="_blank" rel="noreferrer" href={`/static/${result.evidence.spectrogram}`}>View spectrogram</a></div>
-              <div><a target="_blank" rel="noreferrer" href={`/static/${result.evidence.metadata}`}>View metadata</a></div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
