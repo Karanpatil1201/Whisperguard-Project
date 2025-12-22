@@ -1,0 +1,11 @@
+numpy
+sounddevice
+soundfile
+librosa
+scipy
+matplotlib
+psutil
+
+# Web demo
+Flask
+

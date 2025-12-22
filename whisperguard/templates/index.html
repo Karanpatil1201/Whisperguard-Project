@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>WhisperGuard — Web Demo</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 20px; }
+      .btn { padding: 8px 12px; margin: 6px; }
+      #status { margin-top: 12px; }
+      pre { background:#f6f6f6; padding:10px }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- Load React + Babel for a simple development React UI (prototype). -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <style>
+      body { background:#0b1220; color:#e6eef8; font-family: Inter, system-ui, Arial, sans-serif; }
+      .card { background: linear-gradient(180deg,#071024 0%, #0f2130 100%); border:1px solid rgba(255,255,255,0.04); padding:18px; border-radius:8px; }
+      h1 { color:#6be4ff; margin-bottom:6px }
+      .accent { color:#ffb86b }
+      button { background:#14283b; color:#e6eef8; border:1px solid rgba(255,255,255,0.04); padding:8px 12px; border-radius:6px }
+      input[type="range"] { width:180px }
+      pre { color:#cfeefe }
+      .muted { color:#8893a7 }
+    </style>
+    <script type="text/babel" src="/static/app_react.js"></script>
+  </body>
+ </html>
