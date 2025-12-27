@@ -37,7 +37,6 @@ function App(){
 
   useEffect(()=>{ fetchEvidence(); const id = setInterval(fetchEvidence, 10000); return ()=>clearInterval(id); }, []);
 
-  // minimal encoder from captured Float32 to WAV (kept simple)
   function encodeWAV(samples, sampleRate){
     const buffer = new ArrayBuffer(44 + samples.length * 2);
     const view = new DataView(buffer);
@@ -50,7 +49,6 @@ function App(){
     return new Blob([view], {type:'audio/wav'});
   }
 
-  // Start continuous capture using MediaRecorder; decode chunks to WAV before sending
   async function startContinuous(){
     if (continuousRunning) return;
     try{
@@ -63,7 +61,6 @@ function App(){
       mr.ondataavailable = async (e) => {
         if (!e.data || e.data.size === 0) return;
         try{
-          // decode to PCM then re-encode to WAV so server receives a WAV
           const ab = await e.data.arrayBuffer();
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
           const audioBuf = await ctx.decodeAudioData(ab.slice(0));
@@ -74,7 +71,6 @@ function App(){
         }catch(err){ console.warn('continuous chunk decode/send failed', err); }
       };
       mr.onerror = (ev)=> console.warn('MediaRecorder error', ev);
-      // start with 1s timeslice to match server chunking
       mr.start(1000);
       mediaRecorderRef.current = mr;
       continuousRef.current = { running: true, stream };
@@ -110,7 +106,6 @@ function App(){
 
   function onUpload(){ const f = fileRef.current.files[0]; if(!f) return alert('Select a file'); analyzeFile(f); }
 
-  // simple UI helpers to synthesize vendor columns from ml_scores
   function vendorListFromResult(res){
     const vendors = ['Vendor A','Vendor B','Vendor C','Ultrasonic Detector'];
     const scores = (res && res.ml_scores) ? Object.values(res.ml_scores) : [0,0,0, (res&&res.rule_ratio)||0];

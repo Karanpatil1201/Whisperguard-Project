@@ -4,30 +4,22 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>WhisperGuard — Web Demo</title>
-    <style>
-      body { font-family: Arial, sans-serif; padding: 20px; }
-      .btn { padding: 8px 12px; margin: 6px; }
-      #status { margin-top: 12px; }
-      pre { background:#f6f6f6; padding:10px }
-    </style>
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="/static/css/virustotal.css" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>
 
-    <!-- Load React + Babel for a simple development React UI (prototype). -->
+    <!-- React, Babel, and Axios -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script crossorigin src="https://unpkg.com/axios/dist/axios.min.js"></script>
     <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-    <!-- Bootstrap + icons for a VirusTotal-like UI -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-" crossorigin="anonymous">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="/static/css/virustotal.css" rel="stylesheet">
-
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script crossorigin src="https://unpkg.com/axios/dist/axios.min.js"></script>
-    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <!-- App -->
     <script type="text/babel" src="/static/app_react.js"></script>
   </body>
- </html>
+</html>
