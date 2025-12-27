@@ -9,3 +9,11 @@ psutil
 # Web demo
 Flask
 
+flask
+librosa
+matplotlib
+numpy
+psutil
+scipy
+sounddevice
+soundfile

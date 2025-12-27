@@ -88,9 +88,10 @@ def save_evidence(waveform, sr, ml_scores, rule_ratio, level, score, base_dir=No
 
     # Return paths relative to static so Flask can serve them
     rel_base = os.path.relpath(folder, os.path.join(os.path.dirname(__file__), 'static'))
+    rel_base_normalized = rel_base.replace('\\', '/')
     return {
-        'folder': rel_base.replace('\\', '/'),
-        'audio': f'{rel_base.replace("\\", "/")}/audio.wav',
-        'spectrogram': f'{rel_base.replace("\\", "/")}/spectrogram.png',
-        'metadata': f'{rel_base.replace("\\", "/")}/metadata.json',
+        'folder': rel_base_normalized,
+        'audio': f'{rel_base_normalized}/audio.wav',
+        'spectrogram': f'{rel_base_normalized}/spectrogram.png',
+        'metadata': f'{rel_base_normalized}/metadata.json',
     }
